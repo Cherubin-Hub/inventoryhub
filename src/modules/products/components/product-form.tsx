@@ -11,22 +11,35 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 
 import { productSchema, type ProductInput } from "../schemas";
-import { createProduct } from "../actions";
+import { createProduct, updateProduct } from "../actions";
 
-export function ProductForm() {
+// NEW: We accept optional initialData. If it exists, we are in "Edit" mode.
+export function ProductForm({ initialData }: { initialData?: any }) {
   const [serverError, setServerError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  const isEditing = !!initialData;
+
   const form = useForm<ProductInput>({
     resolver: zodResolver(productSchema),
-    defaultValues: { name: "", sku: "", unit: "piece", costPrice: 0, sellingPrice: 0, lowStockLevel: 5 },
+    defaultValues: { 
+      name: initialData?.name || "", 
+      sku: initialData?.sku || "", 
+      unit: initialData?.unit || "piece", 
+      costPrice: initialData?.costPrice || 0, 
+      sellingPrice: initialData?.sellingPrice || 0, 
+      lowStockLevel: initialData?.lowStockLevel || 5 
+    },
   });
 
   async function handleSubmit(values: ProductInput) {
     setServerError(null);
     setIsLoading(true);
 
-    const result = await createProduct(values);
+    const result = isEditing 
+      ? await updateProduct(initialData.id, values)
+      : await createProduct(values);
+
     if (result?.error) {
       setServerError(result.error);
       setIsLoading(false);
@@ -36,7 +49,7 @@ export function ProductForm() {
   return (
     <Card className="w-full max-w-2xl mx-auto">
       <CardHeader>
-        <CardTitle className="text-2xl">Create New Product</CardTitle>
+        <CardTitle className="text-2xl">{isEditing ? "Edit Product" : "Create New Product"}</CardTitle>
       </CardHeader>
       <CardContent>
         <Form {...form}>
@@ -70,11 +83,11 @@ export function ProductForm() {
             </div>
 
             <div className="flex justify-end space-x-4">
-              <Button type="button" variant="outline" asChild>
-                <Link href="/products">Cancel</Link>
-              </Button>
+              <Link href="/products">
+                <Button type="button" variant="outline">Cancel</Button>
+              </Link>
               <Button type="submit" disabled={isLoading}>
-                {isLoading ? "Saving..." : "Save Product"}
+                {isLoading ? "Saving..." : (isEditing ? "Update Product" : "Save Product")}
               </Button>
             </div>
           </form>

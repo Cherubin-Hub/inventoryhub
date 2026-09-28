@@ -2,12 +2,11 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireCompany } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
+import { archiveProduct } from "@/modules/products/actions";
 
 export default async function ProductsPage() {
-  // 1. Get the current user's company and role
   const { companyId, role } = await requireCompany();
 
-  // 2. Fetch ONLY the products for this company that aren't archived
   const products = await db.product.findMany({
     where: { companyId, isArchived: false },
     orderBy: { createdAt: "desc" }
@@ -23,9 +22,9 @@ export default async function ProductsPage() {
           <p className="text-muted-foreground">Manage your inventory catalogue.</p>
         </div>
         {canEdit && (
-          <Button asChild>
-            <Link href="/products/new">Add Product</Link>
-          </Button>
+          <Link href="/products/new">
+            <Button>Add Product</Button>
+          </Link>
         )}
       </div>
 
@@ -38,12 +37,14 @@ export default async function ProductsPage() {
               <th className="p-4 font-medium">Cost Price</th>
               <th className="p-4 font-medium">Selling Price</th>
               <th className="p-4 font-medium">Unit</th>
+              {/* NEW: Actions Column Header */}
+              {canEdit && <th className="p-4 font-medium text-right">Actions</th>}
             </tr>
           </thead>
           <tbody>
             {products.length === 0 ? (
               <tr>
-                <td colSpan={5} className="p-8 text-center text-muted-foreground">
+                <td colSpan={canEdit ? 6 : 5} className="p-8 text-center text-muted-foreground">
                   No products found. Click Add Product to create one.
                 </td>
               </tr>
@@ -52,10 +53,26 @@ export default async function ProductsPage() {
                 <tr key={product.id} className="border-b last:border-0 hover:bg-muted/20">
                   <td className="p-4 font-medium">{product.sku}</td>
                   <td className="p-4">{product.name}</td>
-                  {/* We convert the Decimal object to a Number, then format it as PHP */}
                   <td className="p-4">₱{Number(product.costPrice).toFixed(2)}</td>
                   <td className="p-4">₱{Number(product.sellingPrice).toFixed(2)}</td>
                   <td className="p-4 text-muted-foreground">{product.unit}</td>
+                  
+                  {/* NEW: Actions Column */}
+                  {canEdit && (
+                    <td className="p-4 text-right">
+                      <div className="flex justify-end space-x-2">
+                        <Link href={`/products/${product.id}/edit`}>
+                          <Button variant="outline" size="sm">Edit</Button>
+                        </Link>
+                        <form action={async () => {
+                          "use server";
+                          await archiveProduct(product.id);
+                        }}>
+                          <Button variant="destructive" size="sm" type="submit">Archive</Button>
+                        </form>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))
             )}
