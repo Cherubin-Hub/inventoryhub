@@ -2,7 +2,182 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// ENGINE DIFFERENCE: MySQL uses a single url (no directUrl needed for pooling)
 datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
+}
+
+// ─── Enums (alphabetical) ──────────────────────────────────
+
+enum MovementType {
+  IN
+  OUT
+  ADJUSTMENT
+
+  @@map("movement_types")
+}
+
+enum UserRole {
+  OWNER
+  MANAGER
+  STAFF
+
+  @@map("user_roles")
+}
+
+// ─── Models (alphabetical) ─────────────────────────────────
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refreshToken      String? @map("refresh_token") @db.Text
+  accessToken       String? @map("access_token") @db.Text
+  expiresAt         Int?    @map("expires_at")
+  tokenType         String? @map("token_type")
+  scope             String?
+  idToken           String? @map("id_token") @db.Text
+  sessionState      String? @map("session_state")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_accounts_user_id")
+
+  @@unique([provider, providerAccountId], map: "uq_accounts_provider_account")
+  @@map("accounts")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  companyId String   @map("company_id")
+  userId    String   @map("user_id")
+  action    String
+  entity    String
+  entityId  String   @map("entity_id")
+  details   String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade, map: "fk_audit_logs_company_id")
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_audit_logs_user_id")
+
+  @@index([companyId], map: "idx_audit_logs_company_id")
+  @@index([userId], map: "idx_audit_logs_user_id")
+  @@map("audit_logs")
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  companyId String   @map("company_id")
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade, map: "fk_categories_company_id")
+  products Product[]
+
+  @@unique([companyId, name], map: "uq_categories_company_name")
+  @@index([companyId], map: "idx_categories_company_id")
+  @@map("categories")
+}
+
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  auditLogs      AuditLog[]
+  categories     Category[]
+  products       Product[]
+  stockMovements StockMovement[]
+  users          User[]
+
+  @@map("companies")
+}
+
+model Product {
+  id            String   @id @default(cuid())
+  companyId     String   @map("company_id")
+  name          String
+  sku           String
+  categoryId    String?  @map("category_id")
+  unit          String
+  costPrice     Decimal  @map("cost_price") @db.Decimal(12, 2)
+  sellingPrice  Decimal  @map("selling_price") @db.Decimal(12, 2)
+  lowStockLevel Int      @map("low_stock_level")
+  isArchived    Boolean  @default(false) @map("is_archived")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade, map: "fk_products_company_id")
+  category       Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull, map: "fk_products_category_id")
+  stockMovements StockMovement[]
+
+  @@unique([companyId, sku], map: "uq_products_company_sku")
+  @@index([companyId], map: "idx_products_company_id")
+  @@index([categoryId], map: "idx_products_category_id")
+  @@map("products")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique(map: "uq_sessions_session_token") @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_sessions_user_id")
+
+  @@map("sessions")
+}
+
+model StockMovement {
+  id        String       @id @default(cuid())
+  companyId String       @map("company_id")
+  productId String       @map("product_id")
+  type      MovementType
+  quantity  Int
+  note      String?      @db.Text
+  userId    String       @map("user_id")
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade, map: "fk_stock_movements_company_id")
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade, map: "fk_stock_movements_product_id")
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade, map: "fk_stock_movements_user_id")
+
+  @@index([companyId], map: "idx_stock_movements_company_id")
+  @@index([productId], map: "idx_stock_movements_product_id")
+  @@index([userId], map: "idx_stock_movements_user_id")
+  @@map("stock_movements")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  companyId     String?   @map("company_id")
+  name          String?
+  email         String    @unique(map: "uq_users_email")
+  emailVerified DateTime? @map("email_verified")
+  image         String?
+  password      String?
+  role          UserRole  @default(STAFF)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  company        Company?        @relation(fields: [companyId], references: [id], onDelete: Cascade, map: "fk_users_company_id")
+  accounts       Account[]
+  auditLogs      AuditLog[]
+  sessions       Session[]
+  stockMovements StockMovement[]
+
+  @@index([companyId], map: "idx_users_company_id")
+  @@map("users")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique(map: "uq_verification_tokens_token")
+  expires    DateTime
+
+  @@unique([identifier, token], map: "uq_verification_tokens_id_token")
+  @@map("verification_tokens")
 }
