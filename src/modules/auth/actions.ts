@@ -1,17 +1,17 @@
 "use server";
 
 import bcrypt from "bcryptjs";
+import { AuthError } from "next-auth";
 
 import { db } from "@/lib/db";
-import { signupSchema } from "./schemas";
+import { signIn } from "@/lib/auth";
+import { signupSchema, loginSchema } from "./schemas";
 
-import type { SignupInput } from "./schemas";
+import type { SignupInput, LoginInput } from "./schemas";
 
 const SALT_ROUNDS = 10;
 
-// Creates a new user account with a hashed password.
 export async function signup(values: SignupInput): Promise<{ error: string | null }> {
-  // Validate input on the server even though the client already validated it.
   const parsed = signupSchema.safeParse(values);
 
   if (!parsed.success) {
@@ -20,7 +20,6 @@ export async function signup(values: SignupInput): Promise<{ error: string | nul
 
   const { name, email, password } = parsed.data;
 
-  // Check if a user with this email already exists.
   const existingUser = await db.user.findUnique({
     where: { email },
   });
@@ -29,12 +28,8 @@ export async function signup(values: SignupInput): Promise<{ error: string | nul
     return { error: "An account with this email already exists." };
   }
 
-  // Hash the password so we never store it as plain text.
-  // bcrypt.hash turns "mypassword" into something like "$2a$10$X7z..."
-  // Even if the database leaks, attackers cannot reverse the hash.
   const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
 
-  // Create the user in the database.
   await db.user.create({
     data: {
       name,
@@ -44,4 +39,41 @@ export async function signup(values: SignupInput): Promise<{ error: string | nul
   });
 
   return { error: null };
+}
+
+// NEW: Logs the user in using Auth.js
+export async function login(values: LoginInput): Promise<{ error: string | null }> {
+  const parsed = loginSchema.safeParse(values);
+
+  if (!parsed.success) {
+    return { error: "Invalid input" };
+  }
+
+  try {
+    // Auth.js handles the password checking (via the authorize function we wrote earlier)
+    await signIn("credentials", {
+      email: parsed.data.email,
+      password: parsed.data.password,
+      redirectTo: "/dashboard",
+    });
+    
+    return { error: null };
+  } catch (error) {
+    // Next.js handles redirects by throwing a special error. We MUST re-throw it.
+    if (error instanceof Error && error.message === "NEXT_REDIRECT") {
+      throw error;
+    }
+    
+    // Catch Auth.js specific errors (like wrong password)
+    if (error instanceof AuthError) {
+      switch (error.type) {
+        case "CredentialsSignin":
+          return { error: "Invalid email or password." };
+        default:
+          return { error: "Something went wrong." };
+      }
+    }
+    
+    throw error;
+  }
 }

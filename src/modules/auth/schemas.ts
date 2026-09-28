@@ -2,7 +2,6 @@ import { z } from "zod";
 
 const MIN_PASSWORD_LENGTH = 8;
 
-// Validates the signup form data.
 export const signupSchema = z
   .object({
     name: z.string().min(1, "Name is required"),
@@ -17,5 +16,12 @@ export const signupSchema = z
     path: ["confirmPassword"],
   });
 
-// Creates a TypeScript type from the Zod schema so we do not write the type twice.
 export type SignupInput = z.infer<typeof signupSchema>;
+
+// NEW: Validates the login form data.
+export const loginSchema = z.object({
+  email: z.string().email("Please enter a valid email address"),
+  password: z.string().min(1, "Password is required"),
+});
+
+export type LoginInput = z.infer<typeof loginSchema>;
