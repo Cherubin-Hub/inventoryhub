@@ -74,9 +74,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
 
-  callbacks: {
-    // Runs when a JWT is created or updated.
-    // We add our custom fields (id, role, companyId) to the token.
+    callbacks: {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id as string;
@@ -84,16 +82,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.companyId = user.companyId;
       }
 
+      // AUTO-REFRESH TRICK: If the token is missing a companyId (like right after signup),
+      // check the database. If they just created one, update the token!
+      if (!token.companyId && token.id) {
+        const dbUser = await db.user.findUnique({ where: { id: token.id as string } });
+        if (dbUser?.companyId) {
+          token.companyId = dbUser.companyId;
+          token.role = dbUser.role;
+        }
+      }
+
       return token;
     },
-
-    // Runs when the session is read (e.g., in a Server Component).
-    // We copy our custom fields from the token into the session object.
     async session({ session, token }) {
       session.user.id = token.id as string;
       session.user.role = token.role as UserRole;
       session.user.companyId = (token.companyId as string | null) || null;
-
       return session;
     },
   },
