@@ -5,11 +5,13 @@ import { revalidatePath } from "next/cache";
 
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/permissions";
+import { logAction } from "@/lib/audit";
 import { productSchema } from "./schemas";
 import type { ProductInput } from "./schemas";
 
 export async function createProduct(values: ProductInput): Promise<{ error: string | null }> {
-  const { companyId } = await requireRole(["OWNER", "MANAGER"]);
+  // We added userId here so we know who is doing the action
+  const { companyId, userId } = await requireRole(["OWNER", "MANAGER"]);
 
   const parsed = productSchema.safeParse(values);
   if (!parsed.success) return { error: "Invalid input data." };
@@ -22,17 +24,19 @@ export async function createProduct(values: ProductInput): Promise<{ error: stri
 
   if (existingProduct) return { error: "A product with this SKU already exists in your company." };
 
-  await db.product.create({
+  const product = await db.product.create({
     data: { companyId, name, sku, unit, costPrice, sellingPrice, lowStockLevel }
   });
+
+  // RECORD THE AUDIT LOG
+  await logAction(companyId, userId, "CREATE_PRODUCT", `Created product ${name} with SKU ${sku}`);
 
   revalidatePath("/products");
   redirect("/products");
 }
 
-// NEW: Update an existing product
 export async function updateProduct(id: string, values: ProductInput): Promise<{ error: string | null }> {
-  const { companyId } = await requireRole(["OWNER", "MANAGER"]);
+  const { companyId, userId } = await requireRole(["OWNER", "MANAGER"]);
 
   const parsed = productSchema.safeParse(values);
   if (!parsed.success) return { error: "Invalid input data." };
@@ -43,29 +47,32 @@ export async function updateProduct(id: string, values: ProductInput): Promise<{
     where: { companyId_sku: { companyId, sku } }
   });
 
-  // If a product with this SKU exists, and it's NOT the product we are currently editing, block it.
   if (existingProduct && existingProduct.id !== id) {
     return { error: "Another product with this SKU already exists." };
   }
 
-  // The where clause includes companyId to guarantee they own the product they are editing
   await db.product.update({
     where: { id, companyId },
     data: { name, sku, unit, costPrice, sellingPrice, lowStockLevel }
   });
 
+  // RECORD THE AUDIT LOG
+  await logAction(companyId, userId, "UPDATE_PRODUCT", `Updated product ${name} (ID: ${id})`);
+
   revalidatePath("/products");
   redirect("/products");
 }
 
-// NEW: Archive a product (Soft Delete)
 export async function archiveProduct(id: string): Promise<{ error: string | null }> {
-  const { companyId } = await requireRole(["OWNER", "MANAGER"]);
+  const { companyId, userId } = await requireRole(["OWNER", "MANAGER"]);
 
   await db.product.update({
     where: { id, companyId },
     data: { isArchived: true }
   });
+
+  // RECORD THE AUDIT LOG
+  await logAction(companyId, userId, "ARCHIVE_PRODUCT", `Archived product ID: ${id}`);
 
   revalidatePath("/products");
   return { error: null };
