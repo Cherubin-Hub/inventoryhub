@@ -13,6 +13,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <div className="flex items-center space-x-6">
           <span className="text-xl font-bold text-primary">InventoryHub</span>
           <Link href="/dashboard" className="text-sm font-medium hover:text-primary">Dashboard</Link>
+          <Link href="/products" className="text-sm font-medium hover:text-primary">Products</Link>
           <Link href="/team" className="text-sm font-medium hover:text-primary">Team</Link>
         </div>
         <div className="flex items-center space-x-4">
